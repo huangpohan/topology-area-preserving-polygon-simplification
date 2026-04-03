@@ -20,6 +20,7 @@ struct WorkItem {
 	int a, b, c, d;
 	Point e;
 	double displacement;
+	bool fromAB;
 };
 
 // Function prototypes ----------------------------------------------------------------------------------------------------
@@ -28,7 +29,7 @@ std::vector<WorkItem> buildWorklist(const Polygon& polygon);
 void printWorklist(const std::vector<WorkItem>& worklist, const Polygon& polygon);
 
 double cross(const Point& p, const Point& q);
-Point computeE(const Point& A, const Point& B, const Point& C, const Point& D);
+Point computeE(const Point& A, const Point& B, const Point& C, const Point& D, bool& fromAB);
 
 // Function definitions ----------------------------------------------------------------------------------------------------
 double computeArea(const Ring& ring) {
@@ -43,41 +44,6 @@ double computeArea(const Ring& ring) {
 	}
 
 	return area / 2.0; // signed area
-}
-
-std::vector<WorkItem> buildWorklist(const Polygon& polygon) {
-	std::vector<WorkItem> worklist;
-
-	for (int ring_id = 0; ring_id < static_cast<int>(polygon.size()); ring_id++) {
-		const Ring& ring = polygon[ring_id];
-		int m = static_cast<int>(ring.size());
-
-		// Need at least 4 vertices to form A-B-C-D
-		if (m < 4) {
-			continue;
-		}
-
-		for (int i = 0; i < m; i++) {
-			WorkItem item;
-			item.ring_id = ring_id;
-			item.a = i;
-			item.b = (i + 1) % m;
-			item.c = (i + 2) % m;
-			item.d = (i + 3) % m;
-
-			const Point& A = ring[item.a];
-			const Point& B = ring[item.b];
-			const Point& C = ring[item.c];
-			const Point& D = ring[item.d];
-
-			item.e = computeE(A, B, C, D);
-			item.displacement = 0.0; // temporary for now
-
-			worklist.push_back(item);
-		}
-	}
-
-	return worklist;
 }
 
 void printWorklist(const std::vector<WorkItem>& worklist, const Polygon& polygon) {
@@ -99,6 +65,7 @@ void printWorklist(const std::vector<WorkItem>& worklist, const Polygon& polygon
 			<< "C(" << C.x << "," << C.y << ") "
 			<< "D(" << D.x << "," << D.y << ") "
 			<< " | E(" << E.x << "," << E.y << ") "
+			<< " | displacement = " << item.displacement
 			<< std::endl;
 	}
 }
@@ -151,15 +118,14 @@ Point intersectLineWithSegment(const Point& p1, const Point& p2,
 	};
 }
 
-Point computeE(const Point& A, const Point& B, const Point& C, const Point& D) {
+Point computeE(const Point& A, const Point& B, const Point& C, const Point& D, bool& fromAB) {
 	const double EPS = 1e-9;
 
-	// Singular case: B,C,D collinear -> optimal placement is at B
 	if (std::abs(cross(B, C, D)) < EPS) {
+		fromAB = true;   // arbitrary
 		return B;
 	}
 
-	// Equation (1b): ax + by + c = 0
 	double a = D.y - A.y;
 	double b = A.x - D.x;
 	double c = -B.y * A.x
@@ -167,12 +133,9 @@ Point computeE(const Point& A, const Point& B, const Point& C, const Point& D) {
 		+ (B.y - D.y) * C.x
 		+ C.y * D.x;
 
-	// Evaluate where B,C lie relative to AD
 	int sideB = sideOfPointToDirectedLine(B, A, D);
 	int sideC = sideOfPointToDirectedLine(C, A, D);
 
-	// To know which side the E-line is on relative to AD,
-	// sample any point on ax + by + c = 0.
 	Point sampleEline;
 	if (std::abs(b) > EPS) {
 		sampleEline = { 0.0, -c / b };
@@ -186,38 +149,112 @@ Point computeE(const Point& A, const Point& B, const Point& C, const Point& D) {
 	double distB = distancePointToLineTwiceArea(B, A, D);
 	double distC = distancePointToLineTwiceArea(C, A, D);
 
-	// Paper pseudocode:
-	// if side(B,AD) == side(C,AD):
-	//    if d(B,AD) > d(C,AD): return intersection(Eline, AB)
-	//    else if d(B,AD) < d(C,AD): return intersection(Eline, CD)
-	// else:
-	//    if side(B,AD) == side(Eline,AD): return intersection(Eline, AB)
-	//    else: return intersection(Eline, CD)
-
 	Point E;
 
 	if (sideB == sideC) {
-		if (distB > distC + EPS) {
+		if (distB > distC - EPS) { // either plus or minus EPS
+			fromAB = true;
 			E = intersectLineWithSegment(A, B, a, b, c);
 		}
 		else {
+			fromAB = false;
 			E = intersectLineWithSegment(C, D, a, b, c);
 		}
 	}
 	else {
 		if (sideB == sideEline) {
+			fromAB = true;
 			E = intersectLineWithSegment(A, B, a, b, c);
 		}
 		else {
+			fromAB = false;
 			E = intersectLineWithSegment(C, D, a, b, c);
 		}
 	}
 
-	// DEBUG CHECK
-	double check = a * E.x + b * E.y + c;
-	std::cout << "line check = " << check << '\n';
-
 	return E;
+}
+double signedArea(const std::vector<Point>& poly) {
+	double area = 0.0;
+	int n = static_cast<int>(poly.size());
+
+	for (int i = 0; i < n; i++) {
+		const Point& p1 = poly[i];
+		const Point& p2 = poly[(i + 1) % n];
+		area += p1.x * p2.y - p2.x * p1.y;
+	}
+
+	return area / 2.0;
+}
+
+bool pointOnSegment(const Point& p, const Point& a, const Point& b) {
+	const double EPS = 1e-9;
+
+	// collinear
+	if (std::abs(cross(a, b, p)) > EPS) return false;
+
+	// within bounding box
+	return (std::min(a.x, b.x) - EPS <= p.x && p.x <= std::max(a.x, b.x) + EPS &&
+		std::min(a.y, b.y) - EPS <= p.y && p.y <= std::max(a.y, b.y) + EPS);
+}
+
+double triangleArea(const Point& a, const Point& b, const Point& c) {
+	return std::abs(
+		a.x * (b.y - c.y) +
+		b.x * (c.y - a.y) +
+		c.x * (a.y - b.y)
+	) / 2.0;
+}
+
+double computeDisplacement(const Point& A, const Point& B,
+	const Point& C, const Point& D,
+	const Point& E,
+	bool fromAB) {
+	if (fromAB) {
+		return triangleArea(E, B, C) +
+			triangleArea(E, C, D);
+	}
+	else {
+		return triangleArea(A, B, E) +
+			triangleArea(B, C, E);
+	}
+}
+
+std::vector<WorkItem> buildWorklist(const Polygon& polygon) {
+	std::vector<WorkItem> worklist;
+
+	for (int ring_id = 0; ring_id < static_cast<int>(polygon.size()); ring_id++) {
+		const Ring& ring = polygon[ring_id];
+		int m = static_cast<int>(ring.size());
+
+		// Need at least 4 vertices to form A-B-C-D
+		if (m < 4) {
+			continue;
+		}
+
+		for (int i = 0; i < m; i++) {
+			WorkItem item;
+			item.ring_id = ring_id;
+			item.a = i;
+			item.b = (i + 1) % m;
+			item.c = (i + 2) % m;
+			item.d = (i + 3) % m;
+
+			const Point& A = ring[item.a];
+			const Point& B = ring[item.b];
+			const Point& C = ring[item.c];
+			const Point& D = ring[item.d];
+
+			bool fromAB = false;
+			item.e = computeE(A, B, C, D, fromAB);
+			item.fromAB = fromAB;
+			item.displacement = computeDisplacement(A, B, C, D, item.e, item.fromAB);
+
+			worklist.push_back(item);
+		}
+	}
+
+	return worklist;
 }
 
 // Start of the program ----------------------------------------------------------------------------------------------------
