@@ -1,0 +1,8 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="Current" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <LocalDebuggerCommandArguments>input_rectangle_with_two_holes.csv 7</LocalDebuggerCommandArguments>
+    <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
+    <LocalDebuggerCommandArgumentsHistory>input_cushion_with_hexagonal_hole.csv 13|output_rectangle_with_two_holes.txt 7|input_rectangle_with_two_holes.csv 7|</LocalDebuggerCommandArgumentsHistory>
+  </PropertyGroup>
+</Project>
