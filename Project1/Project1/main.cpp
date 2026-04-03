@@ -122,6 +122,7 @@ int main(int argc, char* argv[]) {
 			std::cout << "CW (hole)\n";
 	}
 
+	// (Optional) PPM visualizer ----------------------------------------------------------------------------------------------------
 	const int WIDTH = 500;
 	const int HEIGHT = 500;
 
