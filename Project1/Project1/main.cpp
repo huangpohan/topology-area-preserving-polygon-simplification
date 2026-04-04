@@ -24,14 +24,6 @@ struct WorkItem {
 	bool fromAB;
 };
 
-// Function prototypes ----------------------------------------------------------------------------------------------------
-double computeArea(const Ring& ring);
-std::vector<WorkItem> buildWorklist(const Polygon& polygon);
-void printWorklist(const std::vector<WorkItem>& worklist, const Polygon& polygon);
-
-double cross(const Point& p, const Point& q);
-Point computeE(const Point& A, const Point& B, const Point& C, const Point& D, bool& fromAB);
-
 // Function definitions ----------------------------------------------------------------------------------------------------
 double computeArea(const Ring& ring) {
 	double area = 0.0;
@@ -216,17 +208,37 @@ double triangleArea(const Point& a, const Point& b, const Point& c) {
 	) / 2.0;
 }
 
+Point lineIntersection(const Point& p1, const Point& p2,
+	const Point& q1, const Point& q2) {
+	double A1 = p2.y - p1.y;
+	double B1 = p1.x - p2.x;
+	double C1 = A1 * p1.x + B1 * p1.y;
+
+	double A2 = q2.y - q1.y;
+	double B2 = q1.x - q2.x;
+	double C2 = A2 * q1.x + B2 * q1.y;
+
+	double det = A1 * B2 - A2 * B1;
+
+	return {
+		(B2 * C1 - B1 * C2) / det,
+		(A1 * C2 - A2 * C1) / det
+	};
+}
+
 double computeDisplacement(const Point& A, const Point& B,
 	const Point& C, const Point& D,
 	const Point& E,
 	bool fromAB) {
 	if (fromAB) {
-		return triangleArea(E, B, C) +
-			triangleArea(E, C, D);
+		Point P = lineIntersection(E, D, B, C);
+		return triangleArea(B, E, P) +
+			triangleArea(P, C, D);
 	}
 	else {
-		return triangleArea(A, B, E) +
-			triangleArea(B, C, E);
+		Point P = lineIntersection(A, E, B, C);
+		return triangleArea(A, B, P) +
+			triangleArea(P, E, C);
 	}
 }
 
@@ -322,32 +334,35 @@ void applyCollapse(Polygon& polygon, const WorkItem& item) {
 	}
 }
 
-void simplifyPolygon(Polygon& polygon, int targetVertices) {
+void simplifyPolygon(Polygon& polygon, int targetVertices, double& totalArealDisplacement) {
 	while (countTotalVertices(polygon) > targetVertices) {
 		std::vector<WorkItem> worklist = buildWorklist(polygon);
+		//printWorklist(worklist, polygon);
 
 		if (worklist.empty()) {
-			std::cerr << "No more collapses possible.\n";
+			//std::cerr << "No more collapses possible.\n";
 			break;
 		}
 
 		const WorkItem* best = findMinWorkItem(worklist);
 		if (!best) {
-			std::cerr << "No valid work item found.\n";
+			//std::cerr << "No valid work item found.\n";
 			break;
 		}
 
-		std::cerr << "Collapsing ring " << best->ring_id
-			<< " at indices "
-			<< best->a << "," << best->b << "," << best->c << "," << best->d
-			<< " with displacement " << best->displacement << "\n";
+		//std::cerr << "Collapsing ring " << best->ring_id
+		//	<< " at indices "
+		//	<< best->a << "," << best->b << "," << best->c << "," << best->d
+		//	<< " with displacement " << best->displacement << "\n";
+
+		totalArealDisplacement += best->displacement;
 
 		applyCollapse(polygon, *best);
 
 		// Optional safety: avoid collapsing a ring below 3 vertices
 		for (const auto& ring : polygon) {
 			if (ring.size() < 3) {
-				std::cerr << "A ring dropped below 3 vertices.\n";
+				//std::cerr << "A ring dropped below 3 vertices.\n";
 				return;
 			}
 		}
@@ -361,6 +376,7 @@ int main(int argc, char* argv[]) {
 		return 1;
 	}
 
+	// store console arguments --------------------------------------------------
 	std::string inputFile = argv[1];
 	int targetVertices = std::stoi(argv[2]);
 
@@ -379,10 +395,12 @@ int main(int argc, char* argv[]) {
 	// local variables to be used ----------------------------------------------------------------------------------------------------
 	double inputArea{};
 	double outputArea{};
+	double totalArealDisplacement{};
 
 	std::string line;
 
-	std::getline(file, line); // skip the header
+	// Skip the header line --------------------------------------------------
+	std::getline(file, line);
 
 	std::map<int, std::map<int, Point>> temp;
 
@@ -423,58 +441,58 @@ int main(int argc, char* argv[]) {
 	inputArea = signedArea(polygon);
 
 	// Print the stored polygon ----------------------------------------------------------------------------------------------------
-	std::cout << "Step 1: Stored Polygon" << std::endl;
+	//std::cout << "Step 1: Stored Polygon" << std::endl;
 	int ring_id, vertex_id;
 	double x, y;
 	ring_id = 0;
 	for (const auto& ring : polygon) {
 		vertex_id = 0;
 		for (const auto& point : ring) {
-			std::cout << "Ring: " << ring_id << " Vertex: " << vertex_id << " (" << point.x << ", " << point.y << ")" << std::endl;
+			//std::cout << "Ring: " << ring_id << " Vertex: " << vertex_id << " (" << point.x << ", " << point.y << ")" << std::endl;
 			vertex_id++;
 		}
 		ring_id++;
 	}
-	std::cout << std::endl;
+	//std::cout << std::endl;
 	
 	// Print the worklist ----------------------------------------------------------------------------------------------------
-	std::cout << "Step 2: Worklist" << std::endl;
+	//std::cout << "Step 2: Worklist" << std::endl;
 	std::vector<WorkItem> worklist = buildWorklist(polygon);
-	printWorklist(worklist, polygon);
-	std::cout << std::endl;
+	//printWorklist(worklist, polygon);
+	//std::cout << std::endl;
 
 	// Performs Simplification ----------------------------------------------------------------------------------------------------
-	std::cout << "Step 3: Find E with the miminum areal displacement, replaced BC with E, loop till target vertices count is met." << std::endl;
+	//std::cout << "Step 3: Find E with the miminum areal displacement, replaced BC with E, loop till target vertices count is met." << std::endl;
 	int totalBefore = countTotalVertices(polygon);
 
-	std::cerr << "Initial total vertices: " << totalBefore << "\n";
-	std::cerr << "Target vertices: " << targetVertices << "\n";
+	//std::cerr << "Initial total vertices: " << totalBefore << "\n";
+	//std::cerr << "Target vertices: " << targetVertices << "\n";
 
 	if (totalBefore <= targetVertices) {
-		std::cerr << "No simplification needed.\n";
+		//std::cerr << "No simplification needed.\n";
 	}
 	else {
-		simplifyPolygon(polygon, targetVertices);
+		simplifyPolygon(polygon, targetVertices, totalArealDisplacement);
 	}
 
-	std::cerr << "Final total vertices: " << countTotalVertices(polygon) << "\n";
-	std::cout << std::endl;
+	//std::cerr << "Final total vertices: " << countTotalVertices(polygon) << "\n";
+	//std::cout << std::endl;
 
 	// Print the polygon with the target amount of vertices ----------------------------------------------------------------------------------------------------
-	std::cout << "Step 4: Polygon with the target vertices" << std::endl;
+	//std::cout << "Step 4: Polygon with the target vertices" << std::endl;
 	ring_id = 0;
 	for (const auto& ring : polygon) {
 		vertex_id = 0;
 		for (const auto& point : ring) {
-			std::cout << "Ring: " << ring_id << " Vertex: " << vertex_id << " (" << point.x << ", " << point.y << ")" << std::endl;
+			//std::cout << "Ring: " << ring_id << " Vertex: " << vertex_id << " (" << point.x << ", " << point.y << ")" << std::endl;
 			vertex_id++;
 		}
 		ring_id++;
 	}
-	std::cout << std::endl;
+	//std::cout << std::endl;
 
 	// Format the output ----------------------------------------------------------------------------------------------------
-	std::cout << "Step 5: Format the output" << std::endl;
+	//std::cout << "Step 5: Format the output" << std::endl;
 	std::cout << "ring_id,vertex_id,x,y" << std::endl;
 	ring_id = 0;
 	for (const auto& ring : polygon) {
@@ -490,8 +508,8 @@ int main(int argc, char* argv[]) {
 	std::cout << std::scientific;
 	std::cout << "Total signed area in input: " << inputArea << std::endl;
 	std::cout << "Total signed area in output: " << outputArea << std::endl;
-	std::cout << "Total areal displacement: " << ring_id << std::endl;
-	std::cout << std::endl;
+	std::cout << "Total areal displacement: " << totalArealDisplacement  << std::endl;
+	//std::cout << std::endl;
 
 	// Calculate the area for each ring ----------------------------------------------------------------------------------------------------
 	//for (int i = 0; i < polygon.size(); i++) {
