@@ -4,6 +4,7 @@
 #include <sstream>
 #include <vector>
 #include <map>
+#include <ios>
 
 #include <cmath>
 
@@ -174,14 +175,23 @@ Point computeE(const Point& A, const Point& B, const Point& C, const Point& D, b
 
 	return E;
 }
-double signedArea(const std::vector<Point>& poly) {
+double signedArea(const std::vector<Ring>& poly) {
 	double area = 0.0;
-	int n = static_cast<int>(poly.size());
+	int n{};
 
-	for (int i = 0; i < n; i++) {
-		const Point& p1 = poly[i];
-		const Point& p2 = poly[(i + 1) % n];
-		area += p1.x * p2.y - p2.x * p1.y;
+	//for (int i = 0; i < n; i++) {
+	//	const Point& p1 = poly[i];
+	//	const Point& p2 = poly[(i + 1) % n];
+	//	area += p1.x * p2.y - p2.x * p1.y;
+	//}
+
+	for (const auto& ring : poly) {
+		n = static_cast<int>(ring.size());
+		for (int i = 0; i < n; i++) {
+			const Point& p1 = ring[i];
+			const Point& p2 = ring[(i + 1) % n];
+			area += p1.x * p2.y - p2.x * p1.y;
+		}
 	}
 
 	return area / 2.0;
@@ -257,19 +267,118 @@ std::vector<WorkItem> buildWorklist(const Polygon& polygon) {
 	return worklist;
 }
 
+int countTotalVertices(const Polygon& polygon) {
+	int total = 0;
+	for (const auto& ring : polygon) {
+		total += static_cast<int>(ring.size());
+	}
+	return total;
+}
+
+const WorkItem* findMinWorkItem(const std::vector<WorkItem>& worklist) {
+	if (worklist.empty()) return nullptr;
+
+	const WorkItem* best = &worklist[0];
+	for (const auto& item : worklist) {
+		if (item.displacement < best->displacement) {
+			best = &item;
+		}
+	}
+	return best;
+}
+
+void applyCollapse(Polygon& polygon, const WorkItem& item) {
+	Ring& ring = polygon[item.ring_id];
+	int m = static_cast<int>(ring.size());
+
+	// For now, handle only the easy case where indices are consecutive without wrap-around
+	// Example: a=3, b=4, c=5, d=6
+	if (!(item.b == (item.a + 1) % m &&
+		item.c == (item.b + 1) % m &&
+		item.d == (item.c + 1) % m)) {
+		return;
+	}
+
+	// Simple non-wrap case
+	if (item.a < item.b && item.b < item.c && item.c < item.d) {
+		ring[item.a + 1] = item.e;                  // replace B with E
+		ring.erase(ring.begin() + item.a + 2);     // erase old C
+	}
+	else {
+		// wrap-around case: rebuild ring
+		Ring newRing;
+		for (int i = 0; i < m; i++) {
+			if (i == item.b) {
+				newRing.push_back(item.e); // put E once
+			}
+			else if (i == item.c) {
+				// skip C
+			}
+			else {
+				newRing.push_back(ring[i]);
+			}
+		}
+		ring = newRing;
+	}
+}
+
+void simplifyPolygon(Polygon& polygon, int targetVertices) {
+	while (countTotalVertices(polygon) > targetVertices) {
+		std::vector<WorkItem> worklist = buildWorklist(polygon);
+
+		if (worklist.empty()) {
+			std::cerr << "No more collapses possible.\n";
+			break;
+		}
+
+		const WorkItem* best = findMinWorkItem(worklist);
+		if (!best) {
+			std::cerr << "No valid work item found.\n";
+			break;
+		}
+
+		std::cerr << "Collapsing ring " << best->ring_id
+			<< " at indices "
+			<< best->a << "," << best->b << "," << best->c << "," << best->d
+			<< " with displacement " << best->displacement << "\n";
+
+		applyCollapse(polygon, *best);
+
+		// Optional safety: avoid collapsing a ring below 3 vertices
+		for (const auto& ring : polygon) {
+			if (ring.size() < 3) {
+				std::cerr << "A ring dropped below 3 vertices.\n";
+				return;
+			}
+		}
+	}
+}
+
 // Start of the program ----------------------------------------------------------------------------------------------------
 int main(int argc, char* argv[]) {
-	if (argc < 2) {
-		std::cout << "Usage: program <csv_file>" << std::endl;
+	if (argc < 3) {
+		std::cerr << "Usage: program <csv_file> <target_vertices>" << std::endl;
 		return 1;
 	}
 
-	std::ifstream file(argv[1]);
+	std::string inputFile = argv[1];
+	int targetVertices = std::stoi(argv[2]);
+
+	if (targetVertices < 0) {
+		std::cerr << "target_vertices must be non-negative\n";
+		return 1;
+	}
+
+	std::ifstream file(inputFile);
 
 	if (!file.is_open()) {
 		std::cout << "Failed to open file" << std::endl;
 		return 1;
 	}
+
+	// local variables to be used ----------------------------------------------------------------------------------------------------
+	double inputArea{};
+	double outputArea{};
 
 	std::string line;
 
@@ -311,6 +420,8 @@ int main(int argc, char* argv[]) {
 		polygon.push_back(ring);
 	}
 
+	inputArea = signedArea(polygon);
+
 	// Print the stored polygon ----------------------------------------------------------------------------------------------------
 	std::cout << "Step 1: Stored Polygon" << std::endl;
 	int ring_id, vertex_id;
@@ -326,12 +437,61 @@ int main(int argc, char* argv[]) {
 	}
 	std::cout << std::endl;
 	
-	// Print the worklist (ABCD for now) ----------------------------------------------------------------------------------------------------
+	// Print the worklist ----------------------------------------------------------------------------------------------------
 	std::cout << "Step 2: Worklist" << std::endl;
 	std::vector<WorkItem> worklist = buildWorklist(polygon);
 	printWorklist(worklist, polygon);
 	std::cout << std::endl;
 
+	// Performs Simplification ----------------------------------------------------------------------------------------------------
+	std::cout << "Step 3: Find E with the miminum areal displacement, replaced BC with E, loop till target vertices count is met." << std::endl;
+	int totalBefore = countTotalVertices(polygon);
+
+	std::cerr << "Initial total vertices: " << totalBefore << "\n";
+	std::cerr << "Target vertices: " << targetVertices << "\n";
+
+	if (totalBefore <= targetVertices) {
+		std::cerr << "No simplification needed.\n";
+	}
+	else {
+		simplifyPolygon(polygon, targetVertices);
+	}
+
+	std::cerr << "Final total vertices: " << countTotalVertices(polygon) << "\n";
+	std::cout << std::endl;
+
+	// Print the polygon with the target amount of vertices ----------------------------------------------------------------------------------------------------
+	std::cout << "Step 4: Polygon with the target vertices" << std::endl;
+	ring_id = 0;
+	for (const auto& ring : polygon) {
+		vertex_id = 0;
+		for (const auto& point : ring) {
+			std::cout << "Ring: " << ring_id << " Vertex: " << vertex_id << " (" << point.x << ", " << point.y << ")" << std::endl;
+			vertex_id++;
+		}
+		ring_id++;
+	}
+	std::cout << std::endl;
+
+	// Format the output ----------------------------------------------------------------------------------------------------
+	std::cout << "Step 5: Format the output" << std::endl;
+	std::cout << "ring_id,vertex_id,x,y" << std::endl;
+	ring_id = 0;
+	for (const auto& ring : polygon) {
+		vertex_id = 0;
+		for (const auto& point : ring) {
+			std::cout << ring_id << "," << vertex_id << "," << point.x << "," << point.y << std::endl;
+			vertex_id++;
+		}
+		ring_id++;
+	}
+
+	outputArea = signedArea(polygon);
+	std::cout << std::scientific;
+	std::cout << "Total signed area in input: " << inputArea << std::endl;
+	std::cout << "Total signed area in output: " << outputArea << std::endl;
+	std::cout << "Total areal displacement: " << ring_id << std::endl;
+	std::cout << std::endl;
 
 	// Calculate the area for each ring ----------------------------------------------------------------------------------------------------
 	//for (int i = 0; i < polygon.size(); i++) {
@@ -347,68 +507,68 @@ int main(int argc, char* argv[]) {
 	//}
 
 	// (Optional) PPM visualizer ----------------------------------------------------------------------------------------------------
-	const int WIDTH = 500;
-	const int HEIGHT = 500;
+	//const int WIDTH = 500;
+	//const int HEIGHT = 500;
 
-	// Find bounding box
-	double minX = 1e9, maxX = -1e9;
-	double minY = 1e9, maxY = -1e9;
+	//// Find bounding box
+	//double minX = 1e9, maxX = -1e9;
+	//double minY = 1e9, maxY = -1e9;
 
-	for (const auto& ring : polygon) {
-		for (const auto& p : ring) {
-			minX = std::min(minX, p.x);
-			maxX = std::max(maxX, p.x);
-			minY = std::min(minY, p.y);
-			maxY = std::max(maxY, p.y);
-		}
-	}
+	//for (const auto& ring : polygon) {
+	//	for (const auto& p : ring) {
+	//		minX = std::min(minX, p.x);
+	//		maxX = std::max(maxX, p.x);
+	//		minY = std::min(minY, p.y);
+	//		maxY = std::max(maxY, p.y);
+	//	}
+	//}
 
-	auto toPixel = [&](double x, double y) {
-		int px = (int)((x - minX) / (maxX - minX) * (WIDTH - 1));
-		int py = (int)((y - minY) / (maxY - minY) * (HEIGHT - 1));
-		py = HEIGHT - 1 - py; // flip Y
-		return std::pair<int, int>(px, py);
-		};
+	//auto toPixel = [&](double x, double y) {
+	//	int px = (int)((x - minX) / (maxX - minX) * (WIDTH - 1));
+	//	int py = (int)((y - minY) / (maxY - minY) * (HEIGHT - 1));
+	//	py = HEIGHT - 1 - py; // flip Y
+	//	return std::pair<int, int>(px, py);
+	//	};
 
-	std::vector<std::vector<int>> img(HEIGHT, std::vector<int>(WIDTH, 0));
+	//std::vector<std::vector<int>> img(HEIGHT, std::vector<int>(WIDTH, 0));
 
-	auto drawLine = [&](int x0, int y0, int x1, int y1) {
-		int dx = std::abs(x1 - x0), dy = -std::abs(y1 - y0);
-		int sx = x0 < x1 ? 1 : -1;
-		int sy = y0 < y1 ? 1 : -1;
-		int err = dx + dy;
+	//auto drawLine = [&](int x0, int y0, int x1, int y1) {
+	//	int dx = std::abs(x1 - x0), dy = -std::abs(y1 - y0);
+	//	int sx = x0 < x1 ? 1 : -1;
+	//	int sy = y0 < y1 ? 1 : -1;
+	//	int err = dx + dy;
 
-		while (true) {
-			if (x0 >= 0 && x0 < WIDTH && y0 >= 0 && y0 < HEIGHT)
-				img[y0][x0] = 255;
+	//	while (true) {
+	//		if (x0 >= 0 && x0 < WIDTH && y0 >= 0 && y0 < HEIGHT)
+	//			img[y0][x0] = 255;
 
-			if (x0 == x1 && y0 == y1) break;
-			int e2 = 2 * err;
-			if (e2 >= dy) { err += dy; x0 += sx; }
-			if (e2 <= dx) { err += dx; y0 += sy; }
-		}
-		};
+	//		if (x0 == x1 && y0 == y1) break;
+	//		int e2 = 2 * err;
+	//		if (e2 >= dy) { err += dy; x0 += sx; }
+	//		if (e2 <= dx) { err += dx; y0 += sy; }
+	//	}
+	//	};
 
-	for (const auto& ring : polygon) {
-		for (size_t i = 0; i < ring.size(); i++) {
-			auto [x0, y0] = toPixel(ring[i].x, ring[i].y);
-			auto [x1, y1] = toPixel(ring[(i + 1) % ring.size()].x,
-				ring[(i + 1) % ring.size()].y);
+	//for (const auto& ring : polygon) {
+	//	for (size_t i = 0; i < ring.size(); i++) {
+	//		auto [x0, y0] = toPixel(ring[i].x, ring[i].y);
+	//		auto [x1, y1] = toPixel(ring[(i + 1) % ring.size()].x,
+	//			ring[(i + 1) % ring.size()].y);
 
-			drawLine(x0, y0, x1, y1);
-		}
-	}
+	//		drawLine(x0, y0, x1, y1);
+	//	}
+	//}
 
-	std::ofstream out("output.ppm");
-	out << "P3\n" << WIDTH << " " << HEIGHT << "\n255\n";
+	//std::ofstream out("output.ppm");
+	//out << "P3\n" << WIDTH << " " << HEIGHT << "\n255\n";
 
-	for (int y = 0; y < HEIGHT; y++) {
-		for (int x = 0; x < WIDTH; x++) {
-			int v = img[y][x];
-			out << v << " " << v << " " << v << " ";
-		}
-		out << "\n";
-	}
+	//for (int y = 0; y < HEIGHT; y++) {
+	//	for (int x = 0; x < WIDTH; x++) {
+	//		int v = img[y][x];
+	//		out << v << " " << v << " " << v << " ";
+	//	}
+	//	out << "\n";
+	//}
 
 	file.close();
 	return 0;
