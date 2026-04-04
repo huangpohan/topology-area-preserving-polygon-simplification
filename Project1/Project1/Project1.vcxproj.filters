@@ -65,51 +65,6 @@
     <Text Include="output_cushion_with_hexagonal_hole.txt">
       <Filter>Resource Files</Filter>
     </Text>
-    <Text Include="myoutput_original_05.txt">
-      <Filter>Resource Files</Filter>
-    </Text>
-    <Text Include="myoutput_original_06.txt">
-      <Filter>Resource Files</Filter>
-    </Text>
-    <Text Include="myoutput_original_07.txt">
-      <Filter>Resource Files</Filter>
-    </Text>
-    <Text Include="myoutput_original_08.txt">
-      <Filter>Resource Files</Filter>
-    </Text>
-    <Text Include="myoutput_original_09.txt">
-      <Filter>Resource Files</Filter>
-    </Text>
-    <Text Include="myoutput_original_10.txt">
-      <Filter>Resource Files</Filter>
-    </Text>
-    <Text Include="myoutput_rectangle_with_two_holes.txt">
-      <Filter>Resource Files</Filter>
-    </Text>
-    <Text Include="myoutput_wavy_with_three_holes.txt">
-      <Filter>Resource Files</Filter>
-    </Text>
-    <Text Include="myoutput_blob_with_two_holes.txt">
-      <Filter>Resource Files</Filter>
-    </Text>
-    <Text Include="myoutput_cushion_with_hexagonal_hole.txt">
-      <Filter>Resource Files</Filter>
-    </Text>
-    <Text Include="myoutput_lake_with_two_islands.txt">
-      <Filter>Resource Files</Filter>
-    </Text>
-    <Text Include="myoutput_original_01.txt">
-      <Filter>Resource Files</Filter>
-    </Text>
-    <Text Include="myoutput_original_02.txt">
-      <Filter>Resource Files</Filter>
-    </Text>
-    <Text Include="myoutput_original_03.txt">
-      <Filter>Resource Files</Filter>
-    </Text>
-    <Text Include="myoutput_original_04.txt">
-      <Filter>Resource Files</Filter>
-    </Text>
   </ItemGroup>
   <ItemGroup>
     <None Include="input_original_07.csv">

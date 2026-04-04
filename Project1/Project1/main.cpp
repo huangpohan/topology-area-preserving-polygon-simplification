@@ -5,8 +5,6 @@
 #include <vector>
 #include <map>
 #include <ios>
-#include <filesystem>
-#include <unordered_map>
 
 #include <cmath>
 
@@ -59,17 +57,17 @@ void printWorklist(const std::vector<WorkItem>& worklist, const Polygon& polygon
 		const Point& D = ring[item.d];
 		const Point& E = item.e;
 
-		//std::cout << "Ring " << item.ring_id
-		//	<< " | indices: "
-		//	<< item.a << "," << item.b << "," << item.c << "," << item.d
-		//	<< " | points: "
-		//	<< "A(" << A.x << "," << A.y << ") "
-		//	<< "B(" << B.x << "," << B.y << ") "
-		//	<< "C(" << C.x << "," << C.y << ") "
-		//	<< "D(" << D.x << "," << D.y << ") "
-		//	<< " | E(" << E.x << "," << E.y << ") "
-		//	<< " | displacement = " << item.displacement
-		//	<< std::endl;
+		std::cout << "Ring " << item.ring_id
+			<< " | indices: "
+			<< item.a << "," << item.b << "," << item.c << "," << item.d
+			<< " | points: "
+			<< "A(" << A.x << "," << A.y << ") "
+			<< "B(" << B.x << "," << B.y << ") "
+			<< "C(" << C.x << "," << C.y << ") "
+			<< "D(" << D.x << "," << D.y << ") "
+			<< " | E(" << E.x << "," << E.y << ") "
+			<< " | displacement = " << item.displacement
+			<< std::endl;
 	}
 }
 
@@ -211,25 +209,11 @@ bool pointOnSegment(const Point& p, const Point& a, const Point& b) {
 }
 
 double triangleArea(const Point& a, const Point& b, const Point& c) {
-	return 0.5 * ((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x));
-}
-
-Point lineIntersection(const Point& p1, const Point& p2,
-	const Point& q1, const Point& q2) {
-	double A1 = p2.y - p1.y;
-	double B1 = p1.x - p2.x;
-	double C1 = A1 * p1.x + B1 * p1.y;
-
-	double A2 = q2.y - q1.y;
-	double B2 = q1.x - q2.x;
-	double C2 = A2 * q1.x + B2 * q1.y;
-
-	double det = A1 * B2 - A2 * B1;
-
-	Point p{};
-	p.x = (B2 * C1 - B1 * C2) / det;
-	p.y = (A1 * C2 - A2 * C1) / det;
-	return p;
+	return std::abs(
+		a.x * (b.y - c.y) +
+		b.x * (c.y - a.y) +
+		c.x * (a.y - b.y)
+	) / 2.0;
 }
 
 double computeDisplacement(const Point& A, const Point& B,
@@ -237,18 +221,12 @@ double computeDisplacement(const Point& A, const Point& B,
 	const Point& E,
 	bool fromAB) {
 	if (fromAB) {
-		// E lies on AB, so split using intersection of ED with BC
-		Point P = lineIntersection(E, D, B, C);
-
-		return std::abs(triangleArea(E, B, P)) +
-			std::abs(triangleArea(P, C, D));
+		return triangleArea(E, B, C) +
+			triangleArea(E, C, D);
 	}
 	else {
-		// E lies on CD, so split using intersection of AE with BC
-		Point P = lineIntersection(A, E, B, C);
-
-		return std::abs(triangleArea(A, B, P)) +
-			std::abs(triangleArea(P, C, E));
+		return triangleArea(A, B, E) +
+			triangleArea(B, C, E);
 	}
 }
 
@@ -344,7 +322,7 @@ void applyCollapse(Polygon& polygon, const WorkItem& item) {
 	}
 }
 
-void simplifyPolygon(Polygon& polygon, int targetVertices, double& arealDisplacement) {
+void simplifyPolygon(Polygon& polygon, int targetVertices) {
 	while (countTotalVertices(polygon) > targetVertices) {
 		std::vector<WorkItem> worklist = buildWorklist(polygon);
 
@@ -359,12 +337,10 @@ void simplifyPolygon(Polygon& polygon, int targetVertices, double& arealDisplace
 			break;
 		}
 
-		//std::cerr << "Collapsing ring " << best->ring_id
-		//	<< " at indices "
-		//	<< best->a << "," << best->b << "," << best->c << "," << best->d
-		//	<< " with displacement " << best->displacement << "\n";
-
-		arealDisplacement += best->displacement;
+		std::cerr << "Collapsing ring " << best->ring_id
+			<< " at indices "
+			<< best->a << "," << best->b << "," << best->c << "," << best->d
+			<< " with displacement " << best->displacement << "\n";
 
 		applyCollapse(polygon, *best);
 
@@ -378,60 +354,6 @@ void simplifyPolygon(Polygon& polygon, int targetVertices, double& arealDisplace
 	}
 }
 
-std::vector<std::string> getCsvNames(const std::string& folderPath) {
-	std::vector<std::string> names;
-
-	for (const auto& entry : std::filesystem::directory_iterator(folderPath)) {
-		if (!entry.is_regular_file()) continue;
-		if (entry.path().extension() != ".csv") continue;
-
-		std::string name = entry.path().stem().string(); // no .csv
-
-		//const std::string prefix = "input_";
-		//if (name.rfind(prefix, 0) == 0) {
-		//	name = name.substr(prefix.size());
-		//}
-
-		//name = "myoutput_" + name + ".txt";
-
-		names.push_back(name);
-	}
-
-	std::sort(names.begin(), names.end());
-	return names;
-}
-
-// return target from input filename
-int getTargetFromFilename(const std::string& filepath) {
-	std::string filename = std::filesystem::path(filepath).filename().string();
-
-	static const std::unordered_map<std::string, int> targetMap = {
-		{"input_rectangle_with_two_holes.csv", 7},
-		{"input_cushion_with_hexagonal_hole.csv", 13},
-		{"input_blob_with_two_holes.csv", 17},
-		{"input_wavy_with_three_holes.csv", 21},
-		{"input_lake_with_two_islands.csv", 17},
-
-		{"input_original_01.csv", 99},
-		{"input_original_02.csv", 99},
-		{"input_original_03.csv", 99},
-		{"input_original_04.csv", 99},
-		{"input_original_05.csv", 99},
-		{"input_original_06.csv", 99},
-		{"input_original_07.csv", 99},
-		{"input_original_08.csv", 99},
-		{"input_original_09.csv", 99},
-		{"input_original_10.csv", 99}
-	};
-
-	auto it = targetMap.find(filename);
-	if (it == targetMap.end()) {
-		throw std::runtime_error("No target mapped for file: " + filename);
-	}
-
-	return it->second;
-}
-
 // Start of the program ----------------------------------------------------------------------------------------------------
 int main(int argc, char* argv[]) {
 	if (argc < 3) {
@@ -440,177 +362,136 @@ int main(int argc, char* argv[]) {
 	}
 
 	std::string inputFile = argv[1];
+	int targetVertices = std::stoi(argv[2]);
 
-	std::string folder = "."; // current folder
+	if (targetVertices < 0) {
+		std::cerr << "target_vertices must be non-negative\n";
+		return 1;
+	}
 
-	std::vector<std::string> csvInputNames = getCsvNames(folder);
+	std::ifstream file(inputFile);
 
-	for (const auto& name : csvInputNames) {
-		std::string csvInputName = name + ".csv";
-		std::string txtOutputName;
-		const std::string prefix = "input_";
-		if (name.rfind(prefix, 0) == 0) {
-			txtOutputName = name.substr(prefix.size());
-		}
+	if (!file.is_open()) {
+		std::cout << "Failed to open file" << std::endl;
+		return 1;
+	}
 
-		txtOutputName = "myoutput_" + txtOutputName + ".txt";
+	// local variables to be used ----------------------------------------------------------------------------------------------------
+	double inputArea{};
+	double outputArea{};
 
-		//int targetVertices = std::stoi(argv[2]); // need to change...
-		int targetVertices = getTargetFromFilename(csvInputName);
+	std::string line;
 
-		if (targetVertices < 0) {
-			std::cerr << "target_vertices must be non-negative\n";
-			return 1;
-		}
+	std::getline(file, line); // skip the header
 
-		std::ifstream file(csvInputName);
-		std::cout << csvInputName << std::endl;
+	std::map<int, std::map<int, Point>> temp;
 
-		if (!file.is_open()) {
-			std::cout << "Failed to open file" << std::endl;
-			return 1;
-		}
+	while (std::getline(file, line)) { // reads one row
+		std::stringstream ss(line); // treat row as stream
+		std::string token;
 
-		// local variables to be used ----------------------------------------------------------------------------------------------------
-		double inputArea{};
-		double outputArea{};
-		double arealDisplacement{};
-
-		std::string line;
-
-		std::getline(file, line); // skip the header
-
-		std::map<int, std::map<int, Point>> temp;
-
-		while (std::getline(file, line)) { // reads one row
-			std::stringstream ss(line); // treat row as stream
-			std::string token;
-
-			int ring_id, vertex_id;
-			double x, y;
-
-			std::getline(ss, token, ',');
-			ring_id = std::stoi(token);
-
-			std::getline(ss, token, ',');
-			vertex_id = std::stoi(token);
-
-			std::getline(ss, token, ',');
-			x = std::stod(token);
-
-			std::getline(ss, token, ',');
-			y = std::stod(token);
-
-			temp[ring_id][vertex_id] = { x, y };
-		}
-
-		// Store the input polygon ----------------------------------------------------------------------------------------------------
-		Polygon polygon;
-		for (auto& [ring_id, ring_map] : temp) {
-			Ring ring;
-
-			for (auto& [vertex_id, point] : ring_map) {
-				ring.push_back(point);
-			}
-
-			polygon.push_back(ring);
-		}
-
-		inputArea = signedArea(polygon);
-
-		// Print the stored polygon ----------------------------------------------------------------------------------------------------
-		std::cout << "Step 1: Stored Polygon" << std::endl;
 		int ring_id, vertex_id;
 		double x, y;
-		ring_id = 0;
-		for (const auto& ring : polygon) {
-			vertex_id = 0;
-			for (const auto& point : ring) {
-				//std::cout << "Ring: " << ring_id << " Vertex: " << vertex_id << " (" << point.x << ", " << point.y << ")" << std::endl;
-				vertex_id++;
-			}
-			ring_id++;
-		}
-		std::cout << std::endl;
 
-		// Print the worklist ----------------------------------------------------------------------------------------------------
-		std::cout << "Step 2: Worklist" << std::endl;
-		std::vector<WorkItem> worklist = buildWorklist(polygon);
-		printWorklist(worklist, polygon);
-		std::cout << std::endl;
+		std::getline(ss, token, ',');
+		ring_id = std::stoi(token);
 
-		// Performs Simplification ----------------------------------------------------------------------------------------------------
-		std::cout << "Step 3: Find E with the miminum areal displacement, replaced BC with E, loop till target vertices count is met." << std::endl;
-		int totalBefore = countTotalVertices(polygon);
+		std::getline(ss, token, ',');
+		vertex_id = std::stoi(token);
 
-		std::cerr << "Initial total vertices: " << totalBefore << "\n";
-		std::cerr << "Target vertices: " << targetVertices << "\n";
+		std::getline(ss, token, ',');
+		x = std::stod(token);
 
-		if (totalBefore <= targetVertices) {
-			std::cerr << "No simplification needed.\n";
-		}
-		else {
-			simplifyPolygon(polygon, targetVertices, arealDisplacement);
+		std::getline(ss, token, ',');
+		y = std::stod(token);
+
+		temp[ring_id][vertex_id]={x, y};
+	}
+
+	// Store the input polygon ----------------------------------------------------------------------------------------------------
+	Polygon polygon;
+	for (auto& [ring_id, ring_map] : temp) {
+		Ring ring;
+
+		for (auto& [vertex_id, point] : ring_map) {
+			ring.push_back(point);
 		}
 
-		std::cerr << "Final total vertices: " << countTotalVertices(polygon) << "\n";
-		std::cout << std::endl;
+		polygon.push_back(ring);
+	}
 
-		// Print the polygon with the target amount of vertices ----------------------------------------------------------------------------------------------------
-		std::cout << "Step 4: Polygon with the target vertices" << std::endl;
-		ring_id = 0;
-		for (const auto& ring : polygon) {
-			vertex_id = 0;
-			for (const auto& point : ring) {
-				//std::cout << "Ring: " << ring_id << " Vertex: " << vertex_id << " (" << point.x << ", " << point.y << ")" << std::endl;
-				vertex_id++;
-			}
-			ring_id++;
+	inputArea = signedArea(polygon);
+
+	// Print the stored polygon ----------------------------------------------------------------------------------------------------
+	std::cout << "Step 1: Stored Polygon" << std::endl;
+	int ring_id, vertex_id;
+	double x, y;
+	ring_id = 0;
+	for (const auto& ring : polygon) {
+		vertex_id = 0;
+		for (const auto& point : ring) {
+			std::cout << "Ring: " << ring_id << " Vertex: " << vertex_id << " (" << point.x << ", " << point.y << ")" << std::endl;
+			vertex_id++;
 		}
-		std::cout << std::endl;
+		ring_id++;
+	}
+	std::cout << std::endl;
+	
+	// Print the worklist ----------------------------------------------------------------------------------------------------
+	std::cout << "Step 2: Worklist" << std::endl;
+	std::vector<WorkItem> worklist = buildWorklist(polygon);
+	printWorklist(worklist, polygon);
+	std::cout << std::endl;
 
-		// Format the output ----------------------------------------------------------------------------------------------------
-		std::cout << "Step 5: Format the output" << std::endl;
-		//std::cout << "ring_id,vertex_id,x,y" << std::endl;
-		ring_id = 0;
-		for (const auto& ring : polygon) {
-			vertex_id = 0;
-			for (const auto& point : ring) {
-				//std::cout << ring_id << "," << vertex_id << "," << point.x << "," << point.y << std::endl;
-				vertex_id++;
-			}
-			ring_id++;
+	// Performs Simplification ----------------------------------------------------------------------------------------------------
+	std::cout << "Step 3: Find E with the miminum areal displacement, replaced BC with E, loop till target vertices count is met." << std::endl;
+	int totalBefore = countTotalVertices(polygon);
+
+	std::cerr << "Initial total vertices: " << totalBefore << "\n";
+	std::cerr << "Target vertices: " << targetVertices << "\n";
+
+	if (totalBefore <= targetVertices) {
+		std::cerr << "No simplification needed.\n";
+	}
+	else {
+		simplifyPolygon(polygon, targetVertices);
+	}
+
+	std::cerr << "Final total vertices: " << countTotalVertices(polygon) << "\n";
+	std::cout << std::endl;
+
+	// Print the polygon with the target amount of vertices ----------------------------------------------------------------------------------------------------
+	std::cout << "Step 4: Polygon with the target vertices" << std::endl;
+	ring_id = 0;
+	for (const auto& ring : polygon) {
+		vertex_id = 0;
+		for (const auto& point : ring) {
+			std::cout << "Ring: " << ring_id << " Vertex: " << vertex_id << " (" << point.x << ", " << point.y << ")" << std::endl;
+			vertex_id++;
 		}
+		ring_id++;
+	}
+	std::cout << std::endl;
 
-		outputArea = signedArea(polygon);
-		//std::cout << std::scientific;
-		//std::cout << "Total signed area in input: " << inputArea << std::endl;
-		//std::cout << "Total signed area in output: " << outputArea << std::endl;
-		//std::cout << "Total areal displacement: " << arealDisplacement << std::endl;
-		std::cout << std::endl;
-
-		// Output to a file ----------------------------------------------------------------------------------------------------
-		std::cout << "Step 6: Output to a file" << std::endl;
-		std::ofstream outFile(txtOutputName);
-		outFile << "ring_id,vertex_id,x,y" << std::endl;
-		ring_id = 0;
-		for (const auto& ring : polygon) {
-			vertex_id = 0;
-			for (const auto& point : ring) {
-				outFile << ring_id << "," << vertex_id << "," << point.x << "," << point.y << std::endl;
-				vertex_id++;
-			}
-			ring_id++;
+	// Format the output ----------------------------------------------------------------------------------------------------
+	std::cout << "Step 5: Format the output" << std::endl;
+	std::cout << "ring_id,vertex_id,x,y" << std::endl;
+	ring_id = 0;
+	for (const auto& ring : polygon) {
+		vertex_id = 0;
+		for (const auto& point : ring) {
+			std::cout << ring_id << "," << vertex_id << "," << point.x << "," << point.y << std::endl;
+			vertex_id++;
 		}
+		ring_id++;
+	}
 
-		outputArea = signedArea(polygon);
-		outFile << std::scientific;
-		outFile << "Total signed area in input: " << inputArea << std::endl;
-		outFile << "Total signed area in output: " << outputArea << std::endl;
-		outFile << "Total areal displacement: " << arealDisplacement << std::endl;
-		outFile.close();
-		std::cout << std::endl;
-
+	outputArea = signedArea(polygon);
+	std::cout << std::scientific;
+	std::cout << "Total signed area in input: " << inputArea << std::endl;
+	std::cout << "Total signed area in output: " << outputArea << std::endl;
+	std::cout << "Total areal displacement: " << ring_id << std::endl;
+	std::cout << std::endl;
 
 	// Calculate the area for each ring ----------------------------------------------------------------------------------------------------
 	//for (int i = 0; i < polygon.size(); i++) {
@@ -690,6 +571,5 @@ int main(int argc, char* argv[]) {
 	//}
 
 	file.close();
-	}
 	return 0;
 }
