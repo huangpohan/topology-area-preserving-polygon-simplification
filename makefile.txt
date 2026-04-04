@@ -1,0 +1,39 @@
+CXX      := g++
+CXXFLAGS := -std=c++17 -O2 -Wall -Wextra -Wpedantic
+TARGET   := simplify
+SRCDIR   := src
+SRCS     := $(wildcard $(SRCDIR)/*.cpp)
+OBJS     := $(SRCS:.cpp=.o)
+
+.PHONY: all clean test
+
+all: $(TARGET)
+
+$(TARGET): $(OBJS)
+	$(CXX) $(CXXFLAGS) -o $@ $^
+
+$(SRCDIR)/%.o: $(SRCDIR)/%.cpp
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
+
+clean:
+	rm -f $(SRCDIR)/*.o $(TARGET)
+
+# Run all tests: compare output against expected files
+test: $(TARGET)
+	@passed=0; failed=0; \
+	for input in tests/input/*.csv; do \
+		base=$$(basename $$input .csv); \
+		expected=tests/expected/$${base}.txt; \
+		args_file=tests/input/$${base}.args; \
+		if [ ! -f "$$expected" ]; then continue; fi; \
+		target_n=$$(cat $$args_file 2>/dev/null || echo 4); \
+		actual=$$(./$(TARGET) $$input $$target_n 2>/dev/null); \
+		if [ "$$actual" = "$$(cat $$expected)" ]; then \
+			echo "PASS: $$base"; passed=$$((passed+1)); \
+		else \
+			echo "FAIL: $$base"; failed=$$((failed+1)); \
+			echo "  Expected:"; cat $$expected | head -5; \
+			echo "  Got:"; echo "$$actual" | head -5; \
+		fi; \
+	done; \
+	echo ""; echo "Results: $$passed passed, $$failed failed"
