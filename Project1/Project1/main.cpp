@@ -443,16 +443,16 @@ int main(int argc, char* argv[]) {
 	// Print the stored polygon ----------------------------------------------------------------------------------------------------
 	//std::cout << "Step 1: Stored Polygon" << std::endl;
 	int ring_id, vertex_id;
-	double x, y;
-	ring_id = 0;
-	for (const auto& ring : polygon) {
-		vertex_id = 0;
-		for (const auto& point : ring) {
-			//std::cout << "Ring: " << ring_id << " Vertex: " << vertex_id << " (" << point.x << ", " << point.y << ")" << std::endl;
-			vertex_id++;
-		}
-		ring_id++;
-	}
+	//double x, y;
+	//ring_id = 0;
+	//for (const auto& ring : polygon) {
+	//	vertex_id = 0;
+	//	for (const auto& point : ring) {
+	//		//std::cout << "Ring: " << ring_id << " Vertex: " << vertex_id << " (" << point.x << ", " << point.y << ")" << std::endl;
+	//		vertex_id++;
+	//	}
+	//	ring_id++;
+	//}
 	//std::cout << std::endl;
 	
 	// Print the worklist ----------------------------------------------------------------------------------------------------
@@ -480,15 +480,15 @@ int main(int argc, char* argv[]) {
 
 	// Print the polygon with the target amount of vertices ----------------------------------------------------------------------------------------------------
 	//std::cout << "Step 4: Polygon with the target vertices" << std::endl;
-	ring_id = 0;
-	for (const auto& ring : polygon) {
-		vertex_id = 0;
-		for (const auto& point : ring) {
-			//std::cout << "Ring: " << ring_id << " Vertex: " << vertex_id << " (" << point.x << ", " << point.y << ")" << std::endl;
-			vertex_id++;
-		}
-		ring_id++;
-	}
+	//ring_id = 0;
+	//for (const auto& ring : polygon) {
+	//	vertex_id = 0;
+	//	for (const auto& point : ring) {
+	//		//std::cout << "Ring: " << ring_id << " Vertex: " << vertex_id << " (" << point.x << ", " << point.y << ")" << std::endl;
+	//		vertex_id++;
+	//	}
+	//	ring_id++;
+	//}
 	//std::cout << std::endl;
 
 	// Format the output ----------------------------------------------------------------------------------------------------
